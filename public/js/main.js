@@ -11,9 +11,12 @@ let localStream = null;
  */
 let peers = {}
 
+let videoStreams = {}
+let videoEnable = {}
+
 // redirect if not https
-if(location.href.substr(0,5) !== 'https') 
-    location.href = 'https' + location.href.substr(4, location.href.length - 4)
+// if (location.href.substring(0, 5) !== 'https')
+//     location.href = 'https' + location.href.substr(4, location.href.length - 4)
 
 
 //////////// CONFIGURATION //////////////////
@@ -25,25 +28,25 @@ if(location.href.substr(0,5) !== 'https')
 const configuration = {
     // Using From https://www.metered.ca/tools/openrelay/
     "iceServers": [
-    {
-      urls: "stun:openrelay.metered.ca:80"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
-  ]
+        {
+            urls: "stun:openrelay.metered.ca:80"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        }
+    ]
 }
 
 /**
@@ -75,6 +78,7 @@ navigator.mediaDevices.getUserMedia(constraints).then(stream => {
     localStream = stream;
 
     init()
+    toggleVid()
 
 }).catch(e => alert(`getusermedia error ${e.name}`))
 
@@ -83,6 +87,10 @@ navigator.mediaDevices.getUserMedia(constraints).then(stream => {
  */
 function init() {
     socket = io()
+
+    socket.on('videoEnable', data => {
+        videoEnable = data;
+    })
 
     socket.on('initReceive', socket_id => {
         console.log('INIT RECEIVE ' + socket_id)
@@ -99,6 +107,16 @@ function init() {
     socket.on('removePeer', socket_id => {
         console.log('removing peer ' + socket_id)
         removePeer(socket_id)
+    })
+
+    socket.on('removeVideo', socket_id => {
+        console.log('removing video ' + socket_id)
+        removeVideo(socket_id)
+    })
+
+    socket.on('addVideo', socket_id => {
+        console.log('adding video ' + socket_id)
+        addVideo(socket_id)
     })
 
     socket.on('disconnect', () => {
@@ -137,6 +155,42 @@ function removePeer(socket_id) {
 }
 
 /**
+ * Remove the video element when a peer close the camera
+ * @param {String} socket_id video to remove
+ */
+function removeVideo(socket_id) {
+    const video = document.getElementById(socket_id);
+    // const tracks = video.srcObject.getTracks();
+
+    // tracks.forEach(function (track) {
+    //     track.stop();
+    // })
+    // video.srcObject = null;
+    if (video)
+        video.remove();
+    console.log(videos);
+}
+
+/**
+ * Add the video element when a peer reopen the camera
+ * @param {String} socket_id video to add
+ */
+function addVideo(socket_id) {
+    let newVid = document.createElement('video')
+    newVid.srcObject = videoStreams[socket_id]
+    newVid.id = socket_id
+    newVid.playsinline = false
+    newVid.autoplay = true
+    newVid.className = "vid"
+    newVid.onclick = () => openPictureMode(newVid)
+    newVid.ontouchstart = (e) => openPictureMode(newVid)
+    if (!document.getElementById(socket_id))
+        videos.appendChild(newVid)
+
+    console.log(videos);
+}
+
+/**
  * Creates a new peer connection and sets the event listeners
  * @param {String} socket_id 
  *                 ID of the peer
@@ -167,7 +221,10 @@ function addPeer(socket_id, am_initiator) {
         newVid.className = "vid"
         newVid.onclick = () => openPictureMode(newVid)
         newVid.ontouchstart = (e) => openPictureMode(newVid)
-        videos.appendChild(newVid)
+        videoStreams[socket_id] = stream
+
+        if (videoEnable[socket_id])
+            videos.appendChild(newVid)
     })
 }
 
@@ -273,10 +330,52 @@ function toggleMute() {
  * Enable/disable video
  */
 function toggleVid() {
-    for (let index in localStream.getVideoTracks()) {
-        localStream.getVideoTracks()[index].enabled = !localStream.getVideoTracks()[index].enabled
-        vidButton.innerText = localStream.getVideoTracks()[index].enabled ? "Video Enabled" : "Video Disabled"
+    if (localStream) {
+        const videoTracks = localStream.getVideoTracks();
+
+        videoTracks.forEach(function (videoTrack) {
+            videoTrack.enabled = !videoTrack.enabled;
+
+            if (videoTrack.enabled) {
+                socket.emit('addMe', socket.id);
+                switchMedia();
+            }
+            else {
+                socket.emit('removeMe', socket.id);
+                if (localStream) {
+                    const tracks = localStream.getTracks();
+
+                    tracks.forEach(function (track) {
+                        track.stop();
+                    })
+                }
+            }
+            vidButton.innerText = videoTrack.enabled ? "Video Enabled" : "Video Disabled"
+        })
     }
+
+    // for (let index in localStream.getVideoTracks()) {
+    //     localStream.getVideoTracks()[index].enabled = !localStream.getVideoTracks()[index].enabled
+    //     const enable = localStream.getVideoTracks()[index].enabled;
+    //     if (enable) {
+    //         socket.emit('addMe', socket.id);
+    //         switchMedia()
+    //     }
+    //     else {
+    //         socket.emit('removeMe', socket.id);
+    //         if (localStream) {
+    //             const tracks = localStream.getTracks();
+
+    //             tracks.forEach(function (track) {
+    //                 track.stop()
+    //             })
+
+    //             localVideo.srcObject = null
+    //         }
+    //     }
+
+    //     vidButton.innerText = localStream.getVideoTracks()[index].enabled ? "Video Enabled" : "Video Disabled"
+    // }
 }
 
 /**
