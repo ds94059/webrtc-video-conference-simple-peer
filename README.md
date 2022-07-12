@@ -11,7 +11,7 @@ The implementation of the signaling server is done with [socket.io](https://sock
 
 run `npm install` and then `npm start` in the main directory.
 
-Then open the browser at `localhost:3012` or `[your network ip/ public dns]:3000`.
+Then open the browser at `localhost:3000` or `[your network ip/ public dns]:3000`.
 
 
 
